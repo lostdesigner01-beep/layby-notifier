@@ -117,36 +117,46 @@ async function sendLayByEmail(consignor, orderName) {
     const { data, error } = await resend.emails.send({
       from: 'Lost Designer <enquiries@lostdesigner.com.au>',
       to: email,
-      subject: `Great news — your item has been reserved on Lay-By!`,
+      subject: `Your item has been sold on Lay-By!`,
       html: `
         <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #1b1b1b;">
-          <div style="background: #1b1b1b; padding: 24px; text-align: center;">
-            <img src="https://cdn.shopify.com/s/files/1/0675/5287/0700/files/lost_designer_logo_email_2.png?v=1778465268" alt="Lost Designer" style="width: 100%; max-width: 400px; display: block; margin: 0 auto;" />
+          <div style="background: #1b1b1b; padding: 28px; text-align: center;">
+            <img src="https://cdn.shopify.com/s/files/1/0675/5287/0700/files/DESINER_2_2_1.png?v=1778473212" alt="Lost Designer" style="width: 100%; max-width: 420px; display: block; margin: 0 auto;" />
           </div>
           <div style="padding: 40px 30px; background: #f9f6f0;">
             <p style="font-size: 16px; line-height: 1.6;">Hi ${name},</p>
             <p style="font-size: 16px; line-height: 1.6;">
-              Great news — your item <strong>${itemTitle}</strong> (SKU: ${sku}) has been reserved by a customer on our <strong>Lay-By payment plan</strong>.
+              Great news — your item <strong>${itemTitle}</strong> (SKU: ${sku}) has been sold on our <strong>Lay-By payment plan</strong>.
             </p>
             <div style="background: #fff; border-left: 4px solid #D4AF37; padding: 20px 25px; margin: 25px 0;">
-              <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #555;">
+              <p style="margin: 0 0 10px; font-size: 15px; line-height: 1.6; color: #555;">
                 <strong>Please note:</strong> You may have received an automated email showing a lower payment amount — this reflects only the <strong>initial Lay-By deposit (20%)</strong>, not the full sale price. Your item has not sold for a reduced amount.
+              </p>
+              <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #555;">
+                The customer pays the remaining balance in fortnightly instalments over 8 weeks, though they may choose to pay it off earlier. Once all payments are complete, your full consignor payout will be processed as normal.
               </p>
             </div>
             <p style="font-size: 16px; line-height: 1.6;">
-              The customer will pay the remaining balance in fortnightly instalments. Once all payments are complete, your full consignor payout will be processed as normal.
+              In the meantime, your item will remain securely held in our boutique until the Lay-By is fully paid off.
             </p>
             <p style="font-size: 16px; line-height: 1.6;">
-              If you have any questions, please don't hesitate to reach out — we're always happy to help.
+              If you have any questions, please don't hesitate to get in touch — we're always happy to help.
             </p>
-            <p style="font-size: 16px; line-height: 1.6; margin-top: 30px;">
+            <div style="margin: 8px 0 28px;">
+              <p style="font-size: 15px; line-height: 1.9; margin: 0; color: #1b1b1b;">
+                enquiries@lostdesigner.com.au<br/>
+                (03) 9522 9884<br/>
+                428E Toorak Rd, Toorak VIC 3142
+              </p>
+            </div>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0;">
               Warm regards,<br/>
               <strong>The Lost Designer Team</strong>
             </p>
           </div>
           <div style="background: #1b1b1b; padding: 20px; text-align: center;">
             <p style="color: #888; font-size: 12px; margin: 0;">
-              428E Toorak Rd, Toorak VIC 3142 &nbsp;|&nbsp; lostdesigner.com.au
+              428E Toorak Rd, Toorak VIC 3142 &nbsp;|&nbsp; lostdesigner.com.au &nbsp;|&nbsp; (03) 9522 9884
             </p>
           </div>
         </div>
