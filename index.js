@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
@@ -13,18 +13,7 @@ const supabase = createClient(
   process.env.SUPABASE_ANON_KEY
 );
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.zoho.com.au',
-  port: parseInt(process.env.SMTP_PORT || '465'),
-  secure: true,
-  tls: {
-    rejectUnauthorized: false
-  },
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 function verifyShopifyWebhook(req) {
   try {
@@ -124,48 +113,52 @@ async function sendLayByEmail(consignor, orderName) {
 
   const name = firstName || 'there';
 
-  const mailOptions = {
-    from: `"Lost Designer" <${process.env.SMTP_USER}>`,
-    to: email,
-    subject: `Great news — your item has been reserved on Lay-By!`,
-    html: `
-      <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #1b1b1b;">
-        <div style="background: #1b1b1b; padding: 24px; text-align: center;">
-          <img src="https://cdn.shopify.com/s/files/1/0675/5287/0700/files/lost_designer_logo_email_2.png?v=1778465268" alt="Lost Designer" style="width: 100%; max-width: 400px; display: block; margin: 0 auto;" />
-        </div>
-        <div style="padding: 40px 30px; background: #f9f6f0;">
-          <p style="font-size: 16px; line-height: 1.6;">Hi ${name},</p>
-          <p style="font-size: 16px; line-height: 1.6;">
-            Great news — your item <strong>${itemTitle}</strong> (SKU: ${sku}) has been reserved by a customer on our <strong>Lay-By payment plan</strong>.
-          </p>
-          <div style="background: #fff; border-left: 4px solid #D4AF37; padding: 20px 25px; margin: 25px 0;">
-            <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #555;">
-              <strong>Please note:</strong> You may have received an automated email showing a lower payment amount — this reflects only the <strong>initial Lay-By deposit (20%)</strong>, not the full sale price. Your item has not sold for a reduced amount.
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Lost Designer <enquiries@lostdesigner.com.au>',
+      to: email,
+      subject: `Great news — your item has been reserved on Lay-By!`,
+      html: `
+        <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #1b1b1b;">
+          <div style="background: #1b1b1b; padding: 24px; text-align: center;">
+            <img src="https://cdn.shopify.com/s/files/1/0675/5287/0700/files/lost_designer_logo_email_2.png?v=1778465268" alt="Lost Designer" style="width: 100%; max-width: 400px; display: block; margin: 0 auto;" />
+          </div>
+          <div style="padding: 40px 30px; background: #f9f6f0;">
+            <p style="font-size: 16px; line-height: 1.6;">Hi ${name},</p>
+            <p style="font-size: 16px; line-height: 1.6;">
+              Great news — your item <strong>${itemTitle}</strong> (SKU: ${sku}) has been reserved by a customer on our <strong>Lay-By payment plan</strong>.
+            </p>
+            <div style="background: #fff; border-left: 4px solid #D4AF37; padding: 20px 25px; margin: 25px 0;">
+              <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #555;">
+                <strong>Please note:</strong> You may have received an automated email showing a lower payment amount — this reflects only the <strong>initial Lay-By deposit (20%)</strong>, not the full sale price. Your item has not sold for a reduced amount.
+              </p>
+            </div>
+            <p style="font-size: 16px; line-height: 1.6;">
+              The customer will pay the remaining balance in fortnightly instalments. Once all payments are complete, your full consignor payout will be processed as normal.
+            </p>
+            <p style="font-size: 16px; line-height: 1.6;">
+              If you have any questions, please don't hesitate to reach out — we're always happy to help.
+            </p>
+            <p style="font-size: 16px; line-height: 1.6; margin-top: 30px;">
+              Warm regards,<br/>
+              <strong>The Lost Designer Team</strong>
             </p>
           </div>
-          <p style="font-size: 16px; line-height: 1.6;">
-            The customer will pay the remaining balance in fortnightly instalments. Once all payments are complete, your full consignor payout will be processed as normal.
-          </p>
-          <p style="font-size: 16px; line-height: 1.6;">
-            If you have any questions, please don't hesitate to reach out — we're always happy to help.
-          </p>
-          <p style="font-size: 16px; line-height: 1.6; margin-top: 30px;">
-            Warm regards,<br/>
-            <strong>The Lost Designer Team</strong>
-          </p>
+          <div style="background: #1b1b1b; padding: 20px; text-align: center;">
+            <p style="color: #888; font-size: 12px; margin: 0;">
+              428E Toorak Rd, Toorak VIC 3142 &nbsp;|&nbsp; lostdesigner.com.au
+            </p>
+          </div>
         </div>
-        <div style="background: #1b1b1b; padding: 20px; text-align: center;">
-          <p style="color: #888; font-size: 12px; margin: 0;">
-            428E Toorak Rd, Toorak VIC 3142 &nbsp;|&nbsp; lostdesigner.com.au
-          </p>
-        </div>
-      </div>
-    `,
-  };
+      `,
+    });
 
-  try {
-    await transporter.sendMail(mailOptions);
-    console.log(`Email sent to ${email} for SKU ${sku}`);
+    if (error) {
+      console.error(`Resend error for SKU ${sku}:`, error);
+      return false;
+    }
+
+    console.log(`Email sent to ${email} for SKU ${sku}`, data);
     return true;
   } catch (e) {
     console.error(`Failed to send email for SKU ${sku}:`, e.message);
