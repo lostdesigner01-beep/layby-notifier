@@ -79,40 +79,40 @@ async function getConsignorBySku(sku) {
   };
 }
 
-async function hasBeenEmailed(sku) {
+async function hasBeenEmailedLayby(sku) {
   const { data, error } = await supabase
     .from('emailed_skus')
     .select('sku')
     .eq('sku', sku)
     .single();
-
-  if (error && error.code !== 'PGRST116') {
-    console.error('Supabase select error:', error);
-  }
-
+  if (error && error.code !== 'PGRST116') console.error('Supabase error:', error);
   return !!data;
 }
 
-async function markAsEmailed(sku) {
-  const { error } = await supabase
-    .from('emailed_skus')
-    .insert({ sku });
+async function markAsEmailedLayby(sku) {
+  const { error } = await supabase.from('emailed_skus').insert({ sku });
+  if (error) console.error('Supabase insert error:', error);
+}
 
-  if (error) {
-    console.error('Supabase insert error:', error);
-  }
+async function hasBeenEmailedEbay(sku) {
+  const { data, error } = await supabase
+    .from('emailed_skus_ebay')
+    .select('sku')
+    .eq('sku', sku)
+    .single();
+  if (error && error.code !== 'PGRST116') console.error('Supabase error:', error);
+  return !!data;
+}
+
+async function markAsEmailedEbay(sku) {
+  const { error } = await supabase.from('emailed_skus_ebay').insert({ sku });
+  if (error) console.error('Supabase insert error:', error);
 }
 
 async function sendLayByEmail(consignor, orderName) {
   const { email, firstName, itemTitle, sku } = consignor;
-
-  if (!email) {
-    console.log(`No email address for consignor of SKU ${sku}, skipping`);
-    return false;
-  }
-
+  if (!email) { console.log(`No email for SKU ${sku}`); return false; }
   const name = firstName || 'there';
-
   try {
     const { data, error } = await resend.emails.send({
       from: 'Lost Designer <enquiries@lostdesigner.com.au>',
@@ -136,12 +136,8 @@ async function sendLayByEmail(consignor, orderName) {
                 The customer pays the remaining balance in fortnightly instalments over 8 weeks, though they may choose to pay it off earlier. Once all payments are complete, your full consignor payout will be processed as normal.
               </p>
             </div>
-            <p style="font-size: 16px; line-height: 1.6;">
-              In the meantime, your item will remain securely held in our boutique until the Lay-By is fully paid off.
-            </p>
-            <p style="font-size: 16px; line-height: 1.6;">
-              If you have any questions, please don't hesitate to get in touch — we're always happy to help.
-            </p>
+            <p style="font-size: 16px; line-height: 1.6;">In the meantime, your item will remain securely held in our boutique until the Lay-By is fully paid off.</p>
+            <p style="font-size: 16px; line-height: 1.6;">If you have any questions, please don't hesitate to get in touch — we're always happy to help.</p>
             <div style="margin: 8px 0 28px;">
               <p style="font-size: 15px; line-height: 1.9; margin: 0; color: #1b1b1b;">
                 enquiries@lostdesigner.com.au<br/>
@@ -149,29 +145,71 @@ async function sendLayByEmail(consignor, orderName) {
                 428E Toorak Rd, Toorak VIC 3142
               </p>
             </div>
-            <p style="font-size: 16px; line-height: 1.6; margin: 0;">
-              Warm regards,<br/>
-              <strong>The Lost Designer Team</strong>
-            </p>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0;">Warm regards,<br/><strong>The Lost Designer Team</strong></p>
           </div>
           <div style="background: #1b1b1b; padding: 20px; text-align: center;">
-            <p style="color: #888; font-size: 12px; margin: 0;">
-              428E Toorak Rd, Toorak VIC 3142 &nbsp;|&nbsp; lostdesigner.com.au &nbsp;|&nbsp; (03) 9522 9884
-            </p>
+            <p style="color: #888; font-size: 12px; margin: 0;">428E Toorak Rd, Toorak VIC 3142 &nbsp;|&nbsp; lostdesigner.com.au &nbsp;|&nbsp; (03) 9522 9884</p>
           </div>
         </div>
       `,
     });
-
-    if (error) {
-      console.error(`Resend error for SKU ${sku}:`, error);
-      return false;
-    }
-
-    console.log(`Email sent to ${email} for SKU ${sku}`, data);
+    if (error) { console.error(`Resend error for SKU ${sku}:`, error); return false; }
+    console.log(`Lay-By email sent to ${email} for SKU ${sku}`);
     return true;
   } catch (e) {
-    console.error(`Failed to send email for SKU ${sku}:`, e.message);
+    console.error(`Failed to send Lay-By email for SKU ${sku}:`, e.message);
+    return false;
+  }
+}
+
+async function sendEbayEmail(consignor, orderName) {
+  const { email, firstName, itemTitle, sku } = consignor;
+  if (!email) { console.log(`No email for SKU ${sku}`); return false; }
+  const name = firstName || 'there';
+  try {
+    const { data, error } = await resend.emails.send({
+      from: 'Lost Designer <enquiries@lostdesigner.com.au>',
+      to: email,
+      subject: `Your item has been sold on eBay!`,
+      html: `
+        <div style="font-family: Georgia, serif; max-width: 600px; margin: 0 auto; color: #1b1b1b;">
+          <div style="background: #1b1b1b; padding: 28px; text-align: center;">
+            <img src="https://cdn.shopify.com/s/files/1/0675/5287/0700/files/DESINER_2_2_1.png?v=1778473212" alt="Lost Designer" style="width: 100%; max-width: 420px; display: block; margin: 0 auto;" />
+          </div>
+          <div style="padding: 40px 30px; background: #f9f6f0;">
+            <p style="font-size: 16px; line-height: 1.6;">Hi ${name},</p>
+            <p style="font-size: 16px; line-height: 1.6;">
+              Great news — your item <strong>${itemTitle}</strong> (SKU: ${sku}) has been sold on <strong>eBay</strong>.
+            </p>
+            <div style="background: #fff; border-left: 4px solid #D4AF37; padding: 20px 25px; margin: 25px 0;">
+              <p style="margin: 0 0 10px; font-size: 15px; line-height: 1.6; color: #555;">
+                <strong>Please note:</strong> You may notice the sale price appears slightly higher than your agreed listing price. This is because we list items on eBay at a <strong>15% premium</strong> to cover eBay's selling fees, so your consignor payout remains unaffected.
+              </p>
+              <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #555;">
+                Your payout will be calculated based on your original agreed consignment price — not the inflated eBay listing price.
+              </p>
+            </div>
+            <p style="font-size: 16px; line-height: 1.6;">If you have any questions, please don't hesitate to get in touch — we're always happy to help.</p>
+            <div style="margin: 8px 0 28px;">
+              <p style="font-size: 15px; line-height: 1.9; margin: 0; color: #1b1b1b;">
+                enquiries@lostdesigner.com.au<br/>
+                (03) 9522 9884<br/>
+                428E Toorak Rd, Toorak VIC 3142
+              </p>
+            </div>
+            <p style="font-size: 16px; line-height: 1.6; margin: 0;">Warm regards,<br/><strong>The Lost Designer Team</strong></p>
+          </div>
+          <div style="background: #1b1b1b; padding: 20px; text-align: center;">
+            <p style="color: #888; font-size: 12px; margin: 0;">428E Toorak Rd, Toorak VIC 3142 &nbsp;|&nbsp; lostdesigner.com.au &nbsp;|&nbsp; (03) 9522 9884</p>
+          </div>
+        </div>
+      `,
+    });
+    if (error) { console.error(`Resend error for SKU ${sku}:`, error); return false; }
+    console.log(`eBay email sent to ${email} for SKU ${sku}`);
+    return true;
+  } catch (e) {
+    console.error(`Failed to send eBay email for SKU ${sku}:`, e.message);
     return false;
   }
 }
@@ -197,12 +235,13 @@ app.post('/webhook/shopify/orders', async (req, res) => {
   const tags = (order.tags || '').split(',').map(t => t.trim());
   console.log('Order tags:', tags);
 
-  if (!tags.includes('Lay-By')) {
-    console.log('Not a Lay-By order, skipping');
+  const isLayby = tags.includes('Lay-By');
+  const isEbay = tags.includes('eBay');
+
+  if (!isLayby && !isEbay) {
+    console.log('Not a Lay-By or eBay order, skipping');
     return res.status(200).send('OK');
   }
-
-  console.log(`Lay-By order detected: ${order.name}`);
 
   for (const lineItem of order.line_items || []) {
     const sku = lineItem.sku;
@@ -213,22 +252,30 @@ app.post('/webhook/shopify/orders', async (req, res) => {
       continue;
     }
 
-    const alreadyEmailed = await hasBeenEmailed(sku);
-    if (alreadyEmailed) {
-      console.log(`Already emailed for SKU ${sku}, skipping`);
-      continue;
-    }
-
     const consignor = await getConsignorBySku(sku);
     if (!consignor) {
       console.log(`Could not find consignor for SKU ${sku}`);
       continue;
     }
 
-    const sent = await sendLayByEmail(consignor, order.name);
+    if (isLayby) {
+      const alreadyEmailed = await hasBeenEmailedLayby(sku);
+      if (alreadyEmailed) {
+        console.log(`Already sent Lay-By email for SKU ${sku}, skipping`);
+      } else {
+        const sent = await sendLayByEmail(consignor, order.name);
+        if (sent) await markAsEmailedLayby(sku);
+      }
+    }
 
-    if (sent) {
-      await markAsEmailed(sku);
+    if (isEbay) {
+      const alreadyEmailed = await hasBeenEmailedEbay(sku);
+      if (alreadyEmailed) {
+        console.log(`Already sent eBay email for SKU ${sku}, skipping`);
+      } else {
+        const sent = await sendEbayEmail(consignor, order.name);
+        if (sent) await markAsEmailedEbay(sku);
+      }
     }
   }
 
