@@ -24,14 +24,20 @@ const transporter = nodemailer.createTransport({
 });
 
 function verifyShopifyWebhook(req) {
-  const hmac = req.headers['x-shopify-hmac-sha256'];
-  const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
-  const body = req.body;
-  const hash = crypto
-    .createHmac('sha256', secret)
-    .update(body)
-    .digest('base64');
-  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmac));
+  try {
+    const hmac = req.headers['x-shopify-hmac-sha256'];
+    if (!hmac) return false;
+    const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
+    const body = req.body;
+    const hash = crypto
+      .createHmac('sha256', secret)
+      .update(body)
+      .digest('base64');
+    return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmac));
+  } catch (e) {
+    console.error('Verification error:', e.message);
+    return false;
+  }
 }
 
 async function getConsignorBySku(sku) {
@@ -160,27 +166,36 @@ async function sendLayByEmail(consignor, orderName) {
 }
 
 app.post('/webhook/shopify/orders', async (req, res) => {
-  try {
-    if (!verifyShopifyWebhook(req)) {
-      console.log('Webhook verification failed');
-      return res.status(401).send('Unauthorized');
-    }
-  } catch (e) {
-    console.error('Webhook verification error:', e);
-    return res.status(401).send('Unauthorized');
+  console.log('Webhook received');
+
+  if (!verifyShopifyWebhook(req)) {
+    console.log('Webhook verification failed - ignoring');
+    return res.status(200).send('OK');
   }
 
-  const order = JSON.parse(req.body.toString());
+  console.log('Webhook verified successfully');
+
+  let order;
+  try {
+    order = JSON.parse(req.body.toString());
+  } catch (e) {
+    console.error('Failed to parse order JSON:', e.message);
+    return res.status(200).send('OK');
+  }
 
   const tags = (order.tags || '').split(',').map(t => t.trim());
+  console.log('Order tags:', tags);
+
   if (!tags.includes('Lay-By')) {
-    return res.status(200).send('Not a Lay-By order, skipping');
+    console.log('Not a Lay-By order, skipping');
+    return res.status(200).send('OK');
   }
 
   console.log(`Lay-By order detected: ${order.name}`);
 
   for (const lineItem of order.line_items || []) {
     const sku = lineItem.sku;
+    console.log(`Processing line item SKU: ${sku}`);
 
     if (!sku) {
       console.log('Line item has no SKU, skipping');
