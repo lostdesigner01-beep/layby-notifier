@@ -15,9 +15,11 @@ const supabase = createClient(
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.zoho.com.au',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false,
-  requireTLS: true,
+  port: parseInt(process.env.SMTP_PORT || '465'),
+  secure: true,
+  tls: {
+    rejectUnauthorized: false
+  },
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
@@ -161,9 +163,14 @@ async function sendLayByEmail(consignor, orderName) {
     `,
   };
 
-  await transporter.sendMail(mailOptions);
-  console.log(`Email sent to ${email} for SKU ${sku}`);
-  return true;
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`Email sent to ${email} for SKU ${sku}`);
+    return true;
+  } catch (e) {
+    console.error(`Failed to send email for SKU ${sku}:`, e.message);
+    return false;
+  }
 }
 
 app.post('/webhook/shopify/orders', async (req, res) => {
