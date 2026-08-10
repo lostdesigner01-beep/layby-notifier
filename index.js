@@ -4,13 +4,35 @@ const { Resend } = require('resend');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  next();
+});
 
-app.use('/webhook', express.raw({ type: 'application/json' }));
-app.use(express.json());
+app.use('/webhook', express.raw({ type: 'application/json', limit: '1mb' }));
+app.use(express.json({ limit: '100kb' }));
+
+const REQUIRED_ENV = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'RESEND_API_KEY',
+  'SHOPIFY_WEBHOOK_SECRET',
+  'CONSIGNCLOUD_API_KEY',
+];
+for (const name of REQUIRED_ENV) {
+  if (!String(process.env[name] || '').trim()) throw new Error(`${name} is required`);
+}
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_ANON_KEY
+  process.env.SUPABASE_SERVICE_ROLE_KEY,
+  { auth: { autoRefreshToken: false, detectSessionInUrl: false, persistSession: false } }
 );
 
 const resend = new Resend(process.env.RESEND_API_KEY);
@@ -25,11 +47,37 @@ function verifyShopifyWebhook(req) {
       .createHmac('sha256', secret)
       .update(body)
       .digest('base64');
-    return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(hmac));
+    const expected = Buffer.from(hash);
+    const actual = Buffer.from(String(hmac));
+    return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
   } catch (e) {
     console.error('Verification error:', e.message);
     return false;
   }
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+const webhookHits = new Map();
+function webhookRateLimit(req, res, next) {
+  const now = Date.now();
+  const key = String(req.ip || 'unknown');
+  let entry = webhookHits.get(key);
+  if (!entry || entry.resetAt <= now) entry = { count: 0, resetAt: now + 60_000 };
+  entry.count += 1;
+  webhookHits.set(key, entry);
+  if (entry.count > 120) {
+    res.setHeader('Retry-After', String(Math.ceil((entry.resetAt - now) / 1000)));
+    return res.status(429).send('Too Many Requests');
+  }
+  return next();
 }
 
 async function getConsignorBySku(sku) {
@@ -112,7 +160,9 @@ async function markAsEmailedEbay(sku) {
 async function sendLayByEmail(consignor, orderName) {
   const { email, firstName, itemTitle, sku } = consignor;
   if (!email) { console.log(`No email for SKU ${sku}`); return false; }
-  const name = firstName || 'there';
+  const name = escapeHtml(firstName || 'there');
+  const safeTitle = escapeHtml(itemTitle);
+  const safeSku = escapeHtml(sku);
   try {
     const { data, error } = await resend.emails.send({
       from: 'Lost Designer <enquiries@lostdesigner.com.au>',
@@ -126,7 +176,7 @@ async function sendLayByEmail(consignor, orderName) {
           <div style="padding: 40px 30px; background: #f9f6f0;">
             <p style="font-size: 16px; line-height: 1.6;">Hi ${name},</p>
             <p style="font-size: 16px; line-height: 1.6;">
-              Great news — your item <strong>${itemTitle}</strong> (SKU: ${sku}) has been sold on our <strong>Lay-By payment plan</strong>.
+              Great news — your item <strong>${safeTitle}</strong> (SKU: ${safeSku}) has been sold on our <strong>Lay-By payment plan</strong>.
             </p>
             <div style="background: #fff; border-left: 4px solid #D4AF37; padding: 20px 25px; margin: 25px 0;">
               <p style="margin: 0 0 10px; font-size: 15px; line-height: 1.6; color: #555;">
@@ -165,7 +215,9 @@ async function sendLayByEmail(consignor, orderName) {
 async function sendEbayEmail(consignor, orderName) {
   const { email, firstName, itemTitle, sku } = consignor;
   if (!email) { console.log(`No email for SKU ${sku}`); return false; }
-  const name = firstName || 'there';
+  const name = escapeHtml(firstName || 'there');
+  const safeTitle = escapeHtml(itemTitle);
+  const safeSku = escapeHtml(sku);
   try {
     const { data, error } = await resend.emails.send({
       from: 'Lost Designer <enquiries@lostdesigner.com.au>',
@@ -179,7 +231,7 @@ async function sendEbayEmail(consignor, orderName) {
           <div style="padding: 40px 30px; background: #f9f6f0;">
             <p style="font-size: 16px; line-height: 1.6;">Hi ${name},</p>
             <p style="font-size: 16px; line-height: 1.6;">
-              Great news — your item <strong>${itemTitle}</strong> (SKU: ${sku}) has been sold on <strong>eBay</strong>.
+              Great news — your item <strong>${safeTitle}</strong> (SKU: ${safeSku}) has been sold on <strong>eBay</strong>.
             </p>
             <div style="background: #fff; border-left: 4px solid #D4AF37; padding: 20px 25px; margin: 25px 0;">
               <p style="margin: 0 0 10px; font-size: 15px; line-height: 1.6; color: #555;">
@@ -214,7 +266,7 @@ async function sendEbayEmail(consignor, orderName) {
   }
 }
 
-app.post('/webhook/shopify/orders', async (req, res) => {
+app.post('/webhook/shopify/orders', webhookRateLimit, async (req, res) => {
   console.log('Webhook received');
 
   if (!verifyShopifyWebhook(req)) {
@@ -285,6 +337,8 @@ app.post('/webhook/shopify/orders', async (req, res) => {
 app.get('/', (req, res) => {
   res.send('Lay-By Notifier is running');
 });
+
+app.get('/health', (req, res) => res.json({ ok: true }));
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
