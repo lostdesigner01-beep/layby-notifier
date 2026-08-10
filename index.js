@@ -203,11 +203,11 @@ async function sendLayByEmail(consignor, orderName) {
         </div>
       `,
     });
-    if (error) { console.error(`Resend error for SKU ${sku}:`, error); return false; }
-    console.log(`Lay-By email sent to ${email} for SKU ${sku}`);
+    if (error) { console.error('Resend error while sending Lay-By notification:', error); return false; }
+    console.log('Lay-By notification sent');
     return true;
   } catch (e) {
-    console.error(`Failed to send Lay-By email for SKU ${sku}:`, e.message);
+    console.error('Failed to send Lay-By notification:', e.message);
     return false;
   }
 }
@@ -257,11 +257,11 @@ async function sendEbayEmail(consignor, orderName) {
         </div>
       `,
     });
-    if (error) { console.error(`Resend error for SKU ${sku}:`, error); return false; }
-    console.log(`eBay email sent to ${email} for SKU ${sku}`);
+    if (error) { console.error('Resend error while sending eBay notification:', error); return false; }
+    console.log('eBay notification sent');
     return true;
   } catch (e) {
-    console.error(`Failed to send eBay email for SKU ${sku}:`, e.message);
+    console.error('Failed to send eBay notification:', e.message);
     return false;
   }
 }
